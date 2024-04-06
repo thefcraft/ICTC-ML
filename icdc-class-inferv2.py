@@ -1,24 +1,9 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau#, StepLR, ExponentialLR
-from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
-from torch.utils.data import Dataset, DataLoader, Subset, random_split
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB # best
-from sklearn.svm import SVC # best
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score, f1_score, mean_squared_error
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-import pickle
-
+from torch.nn.utils.rnn import pad_sequence
 import numpy as np
-import random
-import os
 import time, math
+import pickle
 
 charsVocab = ['s', 'i', 'd', 'n', 'y', ' ', 'o', 'p', 'e', 'r', 'a', 'h', 'u', 't', 'k', 'j', 'l', 'b', 'm', 'c', 'v', ',', '.', 'g', 'w', 'z', 'ൻ', 'ൽ', 'ർ', 'ൺ', 'ൾ', 'q', '|', 'f', 'x', "'", '(', '1', '2', ')', '?', '9', '8', '4', ';', '3', '"', '‘', '’', '0', '!', '\u200b', '5', '%', '6', ':', '7', 'ʼ', '/', '°']
 PAD_NULL = '-'
@@ -30,7 +15,7 @@ vocab = [PAD_NULL, PAD_START, PAD_END]+[i[0] for i in charsVocab]
 IDX_PAD_NULL = vocab.index(PAD_NULL)
 
 len(vocab), IDX_PAD_NULL
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cpu')#torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 
@@ -157,34 +142,60 @@ with open('models_icdc\\svm.model.pkl', 'rb') as f:
     svm_model = pickle.load(f)
     
 
-def emsemble_infer_v1(texts:str|list[str], printable=False):
+def emsemble_infer_v1(texts:str|list[str], printable=False, proba=False):
     if isinstance(texts, str): texts = [texts]
     output = (
         lr_classifier.predict_proba(vectorizer.transform(texts)) +
         nb_classifier.predict_proba(vectorizer.transform(texts)) + 
         svm_model.predict_proba(vectorizer.transform(texts)) + 
         prob(model_predict(texts))
-    ).argmax(axis=1)
-    if printable:
-        return [['ben', 'guj', 'hin', 'kan', 'mal', 'ori', 'pan', 'tam', 'tel', 'urd', 'eng'][i] for i in output.tolist()]
-    else:
+    )
+    if proba:
         return output
+    if printable:
+        return [['ben', 'guj', 'hin', 'kan', 'mal', 'ori', 'pan', 'tam', 'tel', 'urd', 'eng'][i] for i in output.argmax(axis=1).tolist()]
+    else:
+        return output.argmax(axis=1)
     
-def emsemble_infer_v2(texts:str|list[str], printable=False):
+def emsemble_infer_v2(texts:str|list[str], printable=False, proba=False):
     if isinstance(texts, str): texts = [texts]
     output = (
         prob(lr_classifier.predict_proba(vectorizer.transform(texts)), gap_adjuster=1) + 
         prob(nb_classifier.predict_proba(vectorizer.transform(texts)), gap_adjuster=1) + 
         prob(svm_model.predict_proba(vectorizer.transform(texts)), gap_adjuster=1) + 
         prob(model_predict(texts), gap_adjuster=6)
-    ).argmax(axis=1)
+    )
+    if proba: return output
     if printable:
-        return [['ben', 'guj', 'hin', 'kan', 'mal', 'ori', 'pan', 'tam', 'tel', 'urd', 'eng'][i] for i in output.tolist()]
+        return [['ben', 'guj', 'hin', 'kan', 'mal', 'ori', 'pan', 'tam', 'tel', 'urd', 'eng'][i] for i in output.argmax(axis=1).tolist()]
     else:
-        return output
+        return output.argmax(axis=1)
     
-    
-print(emsemble_infer_v1('alute masala makhie, fetano basena chubie nie dubo tele bhaja yatakshan na bhalo kare bhaja hachche, tiri kara has maharashtrer ei suswadu o janapriya khavarer pad.', 
-                  printable=True))
+def emsemble_infer_v3_last(texts:str|list[str], printable=False, proba=False):
+    if isinstance(texts, str): texts = [texts]
+    output = (
+        lr_classifier.predict_proba(vectorizer.transform(texts)) +
+        nb_classifier.predict_proba(vectorizer.transform(texts)) +
+        prob(model_predict(texts), gap_adjuster=1)
+    )
+    if proba: return output
+    if printable:
+        return [['ben', 'guj', 'hin', 'kan', 'mal', 'ori', 'pan', 'tam', 'tel', 'urd', 'eng'][i] for i in output.argmax(axis=1).tolist()]
+    else:
+        return output.argmax(axis=1)
 
-print(emsemble_infer_v2(["m mase kono ullekhayogya tapapravaher dasha anubhav kara yyani.", 'tum kya kar rahe ho yaar?', 'can you do somethig for me?'], printable=True))
+np.set_printoptions(suppress=True, precision=8)    
+
+print(emsemble_infer_v1(["m mase kono ullekhayogya tapapravaher dasha anubhav kara yyani.", 'tum kya kar rahe ho yaar?', 'can you do somethig for me?'], 
+                  proba=True))
+print(emsemble_infer_v2(["m mase kono ullekhayogya tapapravaher dasha anubhav kara yyani.", 'tum kya kar rahe ho yaar?', 'can you do somethig for me?'], 
+                  proba=True))
+print(emsemble_infer_v3_last(["m mase kono ullekhayogya tapapravaher dasha anubhav kara yyani.", 'tum kya kar rahe ho yaar?', 'can you do somethig for me?'], 
+                  proba=True))
+    
+print(emsemble_infer_v1(["m mase kono ullekhayogya tapapravaher dasha anubhav kara yyani.", 'tum kya kar rahe ho yaar?', 'can you do somethig for me?'], 
+                  printable=True))
+print(emsemble_infer_v2(["m mase kono ullekhayogya tapapravaher dasha anubhav kara yyani.", 'tum kya kar rahe ho yaar?', 'can you do somethig for me?'], 
+                  printable=True))
+print(emsemble_infer_v3_last(["m mase kono ullekhayogya tapapravaher dasha anubhav kara yyani.", 'tum kya kar rahe ho yaar?', 'can you do somethig for me?'], 
+                  printable=True))
